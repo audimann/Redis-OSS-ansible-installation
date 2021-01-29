@@ -1,0 +1,4 @@
+---
+version: 6.0.10
+build_directory: /tmp/REDIS_BUILD
+data_directory: /var/lib/redis

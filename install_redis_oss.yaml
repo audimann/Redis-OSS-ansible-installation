@@ -1,0 +1,153 @@
+---
+- name: Install Opensource Redis server
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  vars_files:
+    - vars.yaml
+
+  tasks:
+  - name: Update repositories cache
+    become: true
+    apt:
+      update_cache: yes
+
+  - name: ensure packages are installed
+    become: true
+    apt:
+      name: 
+        - build-essential
+        - make
+        - tcl
+      state: present
+      update_cache: true
+
+  - name: Ensure build directory exists
+    file:
+      path: "{{ build_directory }}"
+      state: directory
+
+  - name: download redis release {{ version }}
+    get_url: 
+      url: https://download.redis.io/releases/redis-{{ version }}.tar.gz
+      dest: "{{ build_directory }}"
+
+  - name: untar redis
+    unarchive:
+      src: "{{ build_directory }}/redis-{{ version }}.tar.gz"
+      dest:  "{{ build_directory }}"
+
+  - name: build redis
+    shell: make -C {{ build_directory }}/redis-{{ version }} > {{ build_directory }}/redis_build.out 2>&1
+
+  - name: run redis tests
+    shell: make -C {{ build_directory }}/redis-{{ version }} test  > {{ build_directory }}/redis_test.out 2>&1
+
+  - name: install redis into default location
+    become: true
+    shell: make -C {{ build_directory }}/redis-{{ version }} install  > {{ build_directory }}/redis_install.out 2>&1
+
+  - name: Create /etc/redis
+    become: true
+    file:
+      path: /etc/redis
+      state: directory
+
+  - name: ansible copy file locally.
+    become: true
+    copy:
+      src: "{{ build_directory }}/redis-{{ version }}/redis.conf"
+      dest: /etc/redis/redis.conf
+
+  - name: Make sure sytemd is used to control Redis (in /etc/redis/redis.conf)
+    become: true
+    lineinfile:
+      path: /etc/redis/redis.conf
+      regexp: '^supervised '
+      line: supervised systemd
+
+  - name: Bind to all Network interfaces for external requests
+    become: true
+    lineinfile:
+      path: /etc/redis/redis.conf
+      regexp: '^bind '
+      line: bind 0.0.0.0
+
+  - name: Set Redis data directory (in /etc/redis/redis.conf)
+    become: true
+    lineinfile:
+      path: /etc/redis/redis.conf
+      regexp: '^dir '
+      line: dir {{ data_directory }}
+
+  - name: Create Redis Systemd Service file (Unit section)
+    become: true
+    ini_file:
+      path: /etc/systemd/system/redis.service
+      section: Unit
+      option: "{{ item.option }}"
+      value: "{{ item.value }}"
+      backup: no
+      no_extra_spaces: true
+    with_items:
+      - { option: Description, value: Redis In-Memory Data Store }
+      - { option: After, value: network.target }
+
+  - name: Create Redis Systemd Service file (Service section)
+    become: true
+    ini_file:
+      path: /etc/systemd/system/redis.service
+      section: Service
+      option: "{{ item.option }}"
+      value: "{{ item.value }}"
+      backup: no
+      no_extra_spaces: true
+    with_items:
+      - { option: User, value: redis }
+      - { option: Group, value: redis }
+      - { option: ExecStart, value: /usr/local/bin/redis-server /etc/redis/redis.conf }
+      - { option: ExecStop, value: /usr/local/bin/redis-cli shutdown }
+      - { option: Restart, value: always }
+
+  - name: Create Redis Systemd Service file (Install section)
+    become: true
+    ini_file:
+      path: /etc/systemd/system/redis.service
+      section: Install
+      option: "{{ item.option }}"
+      value: "{{ item.value }}"
+      backup: no
+      no_extra_spaces: true
+    with_items:
+      - { option: WantedBy, value: multi-user.target  }
+
+  - name: Create Group redis
+    become: true
+    group:
+      name: redis
+      state: present
+      system: true
+
+  - name: Create User redis
+    become: true
+    user:
+      name: redis
+      comment: Redis Service User
+      group: redis
+      create_home: false
+      system: true
+
+  - name: Ensure redis data directory exists
+    become: true
+    file:
+      path: "{{ data_directory }}"
+      state: directory
+      owner: redis
+      group: redis
+      mode: '770'
+
+  - name: Enable Redis service across reboots
+    become: true
+    systemd:
+      name: redis
+      enabled: yes

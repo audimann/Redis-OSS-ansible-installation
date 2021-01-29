@@ -18,7 +18,12 @@ pip install ansible
 ```bash
 ansible-playbook install_redis_oss.yaml
 ```
-As the playbook requires sudo permissions for some tasks you might have to add the commandline flag "-K" to get prompted for the sudo privilege escalation (depending on your sudoers configuration)
+As the playbook requires sudo permissions for some tasks you might have to add the commandline flag "-K" to get prompted for the sudo privilege escalation (depending on your sudoers configuration).
+You should set the variables in the vars.yaml file. Currently, the following variables can be set:
+- *version* specified the Redis version to downlad
+- *build_directory* is the directory used to build the Redis executables
+- *data_directory* is the directory where redis stores its data
+
 
 ## Platforms Tested
 In its initial release, the playbook was only tested on:
